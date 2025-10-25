@@ -3,6 +3,52 @@ import { i18nRouter } from "next-i18n-router"
 import { NextResponse, type NextRequest } from "next/server"
 import i18nConfig from "./i18nConfig"
 
+// middleware.ts
+import { NextResponse, type NextRequest } from 'next/server'
+import createClient from '@/lib/supabase/middleware' // как у тебя было
+import { i18nRouter } from 'next-i18n-router'
+import i18nConfig from './i18nConfig'
+
+const PUBLIC_PATHS = [
+  /^\/_next\//,
+  /^\/api\/public/,
+  /^\/(ru|en|kk)?\/softwall\/?$/,   // страница «мягкой стенки»
+]
+
+export async function middleware(request: NextRequest) {
+  // 1) если путь публичный — пропускаем сразу
+  const { pathname } = request.nextUrl
+  if (PUBLIC_PATHS.some((re) => re.test(pathname))) {
+    return NextResponse.next()
+  }
+
+  // 2) остальная твоя логика (локализация, Supabase, редирект на чат и т.д.)
+  const i18nResult = i18nRouter(request, i18nConfig)
+  if (i18nResult) return i18nResult
+
+  try {
+    const { supabase, response } = createClient(request)
+    const { data: { session } } = await supabase.auth.getSession()
+
+    // Если нет сессии — здесь, вероятно, у тебя редирект на /login:
+    if (!session) {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+
+    return response
+  } catch {
+    return NextResponse.next()
+  }
+}
+
+export const config = {
+  // matcher можно оставить как был (главное, чтобы /softwall не перехватывался)
+  // Пример:
+  matcher: ['/((?!_next|api|static|.*\\..*).*)'],
+}
+
+
+
 // --- PUBLIC PATHS (можно без авторизации) -------------------
 const PUBLIC_PATHS = [
   /^\/_next\//,                 // статика Next.js
