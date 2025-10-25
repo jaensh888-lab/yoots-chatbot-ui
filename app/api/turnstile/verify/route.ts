@@ -1,4 +1,11 @@
 import { NextResponse } from 'next/server';
+import { getServerSupabase } from '@/supabase/server-client';
+
+export async function GET() {
+  const supabase = getServerSupabase();
+  const { data } = await supabase.from('table').select('*');
+  // ...
+}
 
 export async function POST(req: Request) {
   const { token } = await req.json();
