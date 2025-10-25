@@ -3,6 +3,18 @@ import { i18nRouter } from "next-i18n-router"
 import { NextResponse, type NextRequest } from "next/server"
 import i18nConfig from "./i18nConfig"
 
+// --- PUBLIC PATHS (можно без авторизации) -------------------
+const PUBLIC_PATHS = [
+  /^\/_next\//,                 // статика Next.js
+  /^\/api\/public/,             // твои публичные API (если есть)
+  /^\/(ru|en|kk)?\/softwall\/?$/ // страница "мягкой стенки", с локалями
+];
+
+const isPublicPath = (pathname: string) =>
+  PUBLIC_PATHS.some((re) => re.test(pathname));
+// -------------------------------------------------------------
+
+
 export async function middleware(request: NextRequest) {
   const i18nResult = i18nRouter(request, i18nConfig)
   if (i18nResult) return i18nResult
