@@ -12,6 +12,24 @@ import i18nConfig from './i18nConfig'
 const PUBLIC_PATHS = [
   /^\/_next\//,
   /^\/api\/public/,
+  /^\/(ru|en|kk)?\/softwall\/?$/, // ← страница «мягкой стенки»
+];
+
+function isPublicPath(pathname: string) {
+  return PUBLIC_PATHS.some((re) => re.test(pathname));
+}
+export async function middleware(request: NextRequest) {
+  if (isPublicPath(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
+  // ... существующая логика Supabase/session + ваши редиректы
+}
+
+
+const PUBLIC_PATHS = [
+  /^\/_next\//,
+  /^\/api\/public/,
   /^\/(ru|en|kk)?\/softwall\/?$/,   // страница «мягкой стенки»
 ]
 
