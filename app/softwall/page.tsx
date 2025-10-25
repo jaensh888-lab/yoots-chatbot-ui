@@ -1,55 +1,31 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Turnstile from 'react-turnstile'
-import { supabase } from '@/supabase/browser-client'
+import { Turnstile } from '@marsidev/react-turnstile'
+import { supabase } from '@/supabase/browser-client' // или относительный путь
 
-export default function SoftwallPage() {
-  const router = useRouter()
-  const [token, setToken] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const goAsGuest = async () => {
-    if (!token) return
-    setLoading(true)
-
-    // Если хочешь строго — сначала POST на свой API /api/turnstile-verify,
-    // который проверит токен сервером, а уже затем signInAnonymously ниже.
-
-    const { error } = await supabase.auth.signInAnonymously()
-    if (error) {
-      alert(error.message)
-      setLoading(false)
-      return
-    }
-
-    router.replace('/chat')
-  }
-
+export default function SoftWallPage() {
   return (
-    <main className="mx-auto max-w-md p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Быстрый вход</h1>
-      <p className="text-sm opacity-75">
-        Продолжи как гость — без регистрации. Позже ты сможешь привязать email.
-      </p>
+    <main className="mx-auto max-w-xl p-6">
+      <h1 className="text-2xl font-semibold mb-4">Быстрый доступ</h1>
 
-      <Turnstile
-        sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
-        onVerify={(t) => setToken(t)}
-      />
+      <div className="mb-4">
+        <Turnstile siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!} />
+      </div>
 
       <button
-        className="btn btn-primary w-full disabled:opacity-50"
-        disabled={!token || loading}
-        onClick={goAsGuest}
+        className="rounded bg-blue-600 px-4 py-2 text-white"
+        onClick={async () => {
+          // анонимный вход
+          const { error } = await supabase.auth.signInAnonymously()
+          if (error) {
+            alert(error.message)
+            return
+          }
+          window.location.href = '/'
+        }}
       >
         Продолжить как гость
       </button>
-
-      <div className="text-sm text-center">
-        или <a href="/login" className="underline">войти/зарегистрироваться</a>
-      </div>
     </main>
   )
 }
