@@ -18,6 +18,12 @@ const isPublicPath = (pathname: string) =>
 export async function middleware(request: NextRequest) {
   const i18nResult = i18nRouter(request, i18nConfig)
   if (i18nResult) return i18nResult
+const { pathname } = request.nextUrl;
+
+// если путь публичный — пропускаем дальше без проверок
+if (isPublicPath(pathname)) {
+  return NextResponse.next();
+}
 
   try {
     const { supabase, response } = createClient(request)
