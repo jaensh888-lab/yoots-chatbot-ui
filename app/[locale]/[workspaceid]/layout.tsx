@@ -9,7 +9,7 @@ import Loading from "../loading"
 import { ChatbotUIContext } from "@/context/context"
 
 import { getWorkspaceById } from "@/db/workspaces"
-import { getAssistantWorkspacesByWorkspaceId } from "@/db/assistants"
+// УБРАНО: import { getAssistantWorkspacesByWorkspaceId } from "@/db/assistants"
 import { getChatsByWorkspaceId } from "@/db/chats"
 import { getCollectionWorkspacesByWorkspaceId } from "@/db/collections"
 import { getFileWorkspacesByWorkspaceId } from "@/db/files"
@@ -49,6 +49,36 @@ const ASSISTANT_IMAGES_BUCKET = "assistant-images"
 
 interface WorkspaceLayoutProps {
   children: ReactNode
+}
+
+/** Локальная функция: ассистенты по workspace (2 запроса; RLS-friendly) */
+async function fetchAssistantsByWorkspace(
+  workspaceId: string
+): Promise<AssistantLink[]> {
+  const { data: links, error: linksErr } = await supabase
+    .from("assistant_workspaces")
+    .select("assistant_id")
+    .eq("workspace_id", workspaceId)
+
+  if (linksErr) {
+    console.error("[assistants] links error", linksErr)
+    return []
+  }
+
+  const ids = (links ?? []).map(l => l.assistant_id).filter(Boolean) as string[]
+  if (ids.length === 0) return []
+
+  const { data: assistantsData, error: assErr } = await supabase
+    .from("assistants")
+    .select("id, image_path")
+    .in("id", ids)
+
+  if (assErr) {
+    console.error("[assistants] select error", assErr)
+    return []
+  }
+
+  return (assistantsData ?? []) as AssistantLink[]
 }
 
 export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
@@ -124,10 +154,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     setSelectedWorkspace(workspace as any)
 
     // 2) Ассистенты (id + image_path)
-    const links: AssistantWorkspaceLinks | null =
-      await getAssistantWorkspacesByWorkspaceId(wid)
-
-    const assistants: AssistantLink[] = links?.assistants ?? []
+    const assistants: AssistantLink[] = await fetchAssistantsByWorkspace(wid)
     setAssistants(assistants as any)
 
     // 3) Иконки ассистентов из Storage → base64
