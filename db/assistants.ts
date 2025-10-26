@@ -46,3 +46,15 @@ export async function getCollectionWorkspacesByWorkspaceId(
 
   return { collections: (rows ?? []) as CollectionLite[] }
 }
+export {
+  getAssistantById,
+  getAssistantWorkspacesByWorkspaceId,
+  getAssistantWorkspacesByAssistantId,
+  createAssistant,
+  createAssistants,
+  createAssistantWorkspace,
+  createAssistantWorkspaces,
+  updateAssistant,
+  deleteAssistant,
+  deleteAssistantWorkspace,
+}
