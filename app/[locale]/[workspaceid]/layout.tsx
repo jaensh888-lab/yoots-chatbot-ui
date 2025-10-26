@@ -18,6 +18,24 @@ import { getModelWorkspacesByWorkspaceId } from "@/db/models"
 import { getPresetWorkspacesByWorkspaceId } from "@/db/presets"
 import { getPromptWorkspacesByWorkspaceId } from "@/db/prompts"
 import { getToolWorkspacesByWorkspaceId } from "@/db/tools"
+// импорт типов рядом с остальными импортами
+import type { WorkspaceCollections } from "@/db/collections"
+
+// ...
+
+// было:
+const collectionData = await getCollectionWorkspacesByWorkspaceId(wid)
+setCollections(collectionData.collections)
+
+// стало (любой из вариантов ниже):
+// Вариант А: аннотация переменной
+const collectionData: WorkspaceCollections = await getCollectionWorkspacesByWorkspaceId(wid)
+setCollections(collectionData.collections as any)
+
+// Вариант Б: деструктурирование с дефолтом (мой любимый)
+const { collections = [] } =
+  (await getCollectionWorkspacesByWorkspaceId(wid)) ?? { collections: [] }
+setCollections(collections as any) // убери `as any`, если у setCollections уже строгий тип
 
 import { convertBlobToBase64 } from "@/lib/blob-to-b64"
 import type { LLMID } from "@/types"
