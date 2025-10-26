@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
 import Link from "next/link"
+import { useTheme } from "next-themes"
 import { IconArrowRight } from "@tabler/icons-react"
 
 import { ChatbotUISVG } from "@/components/icons/chatbotui-svg"
@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Если уже есть сессия — сразу отправляем в первый воркспейс
+  // Если уже есть сессия — сразу в первый workspace
   useEffect(() => {
     ;(async () => {
       const { data } = await supabase.auth.getSession()
@@ -39,12 +39,12 @@ export default function LoginPage() {
         .select("id")
         .order("created_at", { ascending: true })
         .limit(1)
-        .returns<WorkspaceIdRow[]>() // ← подсказываем TS форму данных
-        .maybeSingle()               // ← объект или null
+        .returns<WorkspaceIdRow[]>() // подсказываем TS форму данных
+        .maybeSingle()               // один объект или null
       if (error) throw error
 
       if (ws?.id) {
-        router.push(`/${ws.id}/chat`) // клиентская навигация — канонично для client components
+        router.push(`/${ws.id}/chat`)
       } else {
         router.push("/workspaces/new")
       }
