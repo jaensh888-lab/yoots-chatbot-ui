@@ -16,28 +16,20 @@ export const metadata: Metadata = { title: "Login" }
 export default async function Login({
   searchParams
 }: { searchParams: { message?: string } }) {
-  // SSR: если пользователь уже залогинен — уводим в чат
+  // SSR: если сессия есть — в чат
   const cookieStore = cookies()
   const supabaseSSR = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        }
-      }
+      cookies: { get(name: string) { return cookieStore.get(name)?.value } }
     }
   )
   const session = (await supabaseSSR.auth.getSession()).data.session
   if (session) {
     const { data: homeWorkspace, error } = await supabaseSSR
-      .from("workspaces")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .eq("is_home", true)
-      .single()
-
+      .from("workspaces").select("*")
+      .eq("user_id", session.user.id).eq("is_home", true).single()
     if (!homeWorkspace) throw new Error(error?.message ?? "Workspace not found")
     return redirect(`/${homeWorkspace.id}/chat`)
   }
@@ -51,22 +43,13 @@ export default async function Login({
     const cookieStore = cookies()
     const supabase = createClient(cookieStore)
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) return redirect(`/login?message=${encodeURIComponent(error.message)}`)
 
-    const { data: homeWorkspace, error: homeWorkspaceError } = await supabase
-      .from("workspaces")
-      .select("*")
-      .eq("user_id", data.user.id)
-      .eq("is_home", true)
-      .single()
-
-    if (!homeWorkspace) {
-      throw new Error(homeWorkspaceError?.message || "An unexpected error occurred")
-    }
+    const { data: homeWorkspace, error: hwErr } = await supabase
+      .from("workspaces").select("*")
+      .eq("user_id", data.user.id).eq("is_home", true).single()
+    if (!homeWorkspace) throw new Error(hwErr?.message || "An unexpected error occurred")
     return redirect(`/${homeWorkspace.id}/chat`)
   }
 
@@ -83,13 +66,11 @@ export default async function Login({
 
     const emailDomainWhitelistPatternsString = await getEnvVarOrEdgeConfigValue("EMAIL_DOMAIN_WHITELIST")
     const emailDomainWhitelist = emailDomainWhitelistPatternsString?.trim()
-      ? emailDomainWhitelistPatternsString.split(",")
-      : []
+      ? emailDomainWhitelistPatternsString.split(",") : []
 
     const emailWhitelistPatternsString = await getEnvVarOrEdgeConfigValue("EMAIL_WHITELIST")
     const emailWhitelist = emailWhitelistPatternsString?.trim()
-      ? emailWhitelistPatternsString.split(",")
-      : []
+      ? emailWhitelistPatternsString.split(",") : []
 
     if (emailDomainWhitelist.length > 0 || emailWhitelist.length > 0) {
       const domainMatch = emailDomainWhitelist.includes(email.split("@")[1])
@@ -103,8 +84,6 @@ export default async function Login({
     const supabase = createClient(cookieStore)
     const { error } = await supabase.auth.signUp({ email, password })
     if (error) return redirect(`/login?message=${encodeURIComponent(error.message)}`)
-
-    // как и раньше — на мастеринг воркспейса
     return redirect("/setup")
   }
 
@@ -113,11 +92,11 @@ export default async function Login({
     const cookieStore = cookies()
     const supabase = createClient(cookieStore)
 
+    // официальный API: создаёт анонимного пользователя
     const { error } = await supabase.auth.signInAnonymously()
-    if (error) {
-      return redirect(`/login?message=${encodeURIComponent(error.message)}`)
-    }
-    // Гостю также показываем мастера — он создаст домашний workspace
+    if (error) return redirect(`/login?message=${encodeURIComponent(error.message)}`)
+
+    // ведём к мастеру — он создаст домашний workspace
     return redirect("/setup")
   }
 
@@ -127,7 +106,6 @@ export default async function Login({
     const email = formData.get("email") as string
     const cookieStore = cookies()
     const supabase = createClient(cookieStore)
-
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${origin}/auth/callback?next=/login/password`
     })
@@ -136,7 +114,6 @@ export default async function Login({
   }
 
   // ----- UI -----
-
   return (
     <div className="flex w-full flex-1 flex-col justify-center gap-2 px-8 sm:max-w-md">
       <form className="animate-in text-foreground flex w-full flex-1 flex-col justify-center gap-2" action={signIn}>
@@ -153,16 +130,14 @@ export default async function Login({
 
         <div className="text-muted-foreground mt-1 flex justify-center text-sm">
           <span className="mr-1">Forgot your password?</span>
-          <button formAction={handleResetPassword} className="text-primary ml-1 underline hover:opacity-80">
-            Reset
-          </button>
+          <button formAction={handleResetPassword} className="text-primary ml-1 underline hover:opacity-80">Reset</button>
         </div>
 
-        {/* --- новая кнопка гостевого входа --- */}
+        {/* гость без регистрации — отдельная Server Action-кнопка */}
         <div className="mt-6 flex items-center justify-center">
-          <SubmitButton formAction={signInAnonymously} className="rounded-md border px-4 py-2">
+          <button formAction={signInAnonymously} className="rounded-md border px-4 py-2">
             Продолжить без регистрации
-          </SubmitButton>
+          </button>
         </div>
 
         {searchParams?.message && (
