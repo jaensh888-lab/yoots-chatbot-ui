@@ -1,51 +1,53 @@
-import { createClient } from '@/lib/supabase/middleware'
-import { NextResponse, type NextRequest } from 'next/server'
-import { i18nRouter } from 'next-i18n-router'
-import i18nConfig from './i18nConfig'
+import { createClient } from "@/lib/supabase/middleware";
+import { i18nRouter } from "next-i18n-router";
+import i18nConfig from "./i18nConfig";
+import { NextRequest, NextResponse } from "next/server";
 
-// пути, которые доступны без авторизации
-const PUBLIC_PATHS: RegExp[] = [
-  /^\/(?:ru|en|kk)?\/softwall\/?$/i,
-  /^\/(?:ru|en|kk)?\/login\/?$/i,
-  /^\/(?:ru|en|kk)?\/signup\/?$/i,
+// Путь, который пропускаем без проверки сессии
+const PUBLIC_PATHS = [
+  /^\/softwall\/?$/,
+  /^\/(ru|en|kk)\/softwall\/?$/,
   /^\/_next\//,
   /^\/api\/public/,
-  /^\/favicon\.ico$/i,
-  /^\/robots\.txt$/i,
-  /^\/sitemap\.xml$/i,
-]
+  /^\/favicon\.ico$/,
+  /^\/robots\.txt$/
+];
 
 export async function middleware(request: NextRequest) {
-  // Сначала i18n-роутер (он может вернуть rewrite/redirect)
-  const i18nResponse = i18nRouter(request, i18nConfig)
-  if (i18nResponse) return i18nResponse
+  // Сначала i18n
+  const i18n = i18nRouter(request, i18nConfig);
+  if (i18n) return i18n;
 
-  const { nextUrl } = request
-  const pathname = nextUrl.pathname
+  const { pathname } = request.nextUrl;
 
-  // Разрешаем публичные пути (в т.ч. /softwall)
+  // Мягкая стенка и прочие public пути — пропускаем без auth-гейта
   if (PUBLIC_PATHS.some((re) => re.test(pathname))) {
-    return NextResponse.next()
+    return NextResponse.next();
   }
 
-  // Проверяем сессию
-  const supabase = createClient(request)
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // Всё остальное: стандартная логика
+  const { supabase, response } = createClient(request);
 
-  // Нет сессии — отправляем на мягкую стенку
-  if (!session) {
-    const url = new URL(`/softwall`, request.url)
-    return NextResponse.redirect(url)
+  const { data: { session } } = await supabase.auth.getSession();
+
+  // Редиректим корень авторизованного на домашний чат
+  if (session && pathname === "/") {
+    const { data: homeWorkspace } = await supabase
+      .from("workspaces")
+      .select("id")
+      .eq("user_id", session.user.id)
+      .eq("is_home", true)
+      .single();
+
+    if (homeWorkspace?.id) {
+      return NextResponse.redirect(new URL(`/${homeWorkspace.id}/chat`, request.url));
+    }
   }
 
-  // Сессия есть — пропускаем дальше
-  return NextResponse.next()
+  return response;
 }
 
-// matcher определяет, где вообще запускается middleware
+// Обрабатываем все пути, кроме статичных и _next
 export const config = {
-  // исключаем статику и тех.файлы, остальное перехватываем
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)'],
-}
+  matcher: ["/((?!static|.*\\..*|_next).*)"]
+};
