@@ -1,12 +1,12 @@
-'use client'
+"use client"
 
-import { Turnstile } from '@marsidev/react-turnstile'
-import { supabase } from '@/supabase/browser-client' // или относительный путь
+import { Turnstile } from "@marsidev/react-turnstile"
+import { supabase } from "@/supabase/browser-client" // или относительный путь
 
 export default function SoftWallPage() {
   return (
     <main className="mx-auto max-w-xl p-6">
-      <h1 className="text-2xl font-semibold mb-4">Быстрый доступ</h1>
+      <h1 className="mb-4 text-2xl font-semibold">Быстрый доступ</h1>
 
       <div className="mb-4">
         <Turnstile siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!} />
@@ -21,7 +21,7 @@ export default function SoftWallPage() {
             alert(error.message)
             return
           }
-          window.location.href = '/'
+          window.location.href = "/"
         }}
       >
         Продолжить как гость
