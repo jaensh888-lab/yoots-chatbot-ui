@@ -40,11 +40,11 @@ export default function LoginPage() {
         .order("created_at", { ascending: true })
         .limit(1)
         .returns<WorkspaceIdRow[]>() // подсказываем TS форму данных
-        .maybeSingle()               // один объект или null
+        .maybeSingle()               // один объект или null (без throw)
       if (error) throw error
 
       if (ws?.id) {
-        router.push(`/${ws.id}/chat`)
+        router.push(`/${ws.id}/chat`) // клиентская навигация — корректно для client-компонента
       } else {
         router.push("/workspaces/new")
       }
@@ -58,6 +58,7 @@ export default function LoginPage() {
     try {
       setError(null)
       setLoading(true)
+      // официальное API анонимного входа
       const { error } = await supabase.auth.signInAnonymously()
       if (error) throw error
       await goHome()
