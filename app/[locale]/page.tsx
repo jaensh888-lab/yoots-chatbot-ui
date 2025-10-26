@@ -15,11 +15,9 @@ type WorkspaceIdRow = Pick<Tables<"workspaces">, "id">
 export default function LoginPage() {
   const router = useRouter()
   const { theme } = useTheme()
-
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Если уже есть сессия — отправляем в первый workspace
   useEffect(() => {
     ;(async () => {
       const { data } = await supabase.auth.getSession()
@@ -39,12 +37,12 @@ export default function LoginPage() {
         .select("id")
         .order("created_at", { ascending: true })
         .limit(1)
-        .returns<WorkspaceIdRow[]>() // подсказываем TS форму данных
-        .maybeSingle()               // объект или null
+        .returns<WorkspaceIdRow[]>() // подсказываем TS форму
+        .maybeSingle()               // один объект или null
       if (error) throw error
 
       if (ws?.id) {
-        router.push(`/${ws.id}/chat`) // клиентская навигация для Client Component
+        router.push(`/${ws.id}/chat`)
       } else {
         router.push("/workspaces/new")
       }
