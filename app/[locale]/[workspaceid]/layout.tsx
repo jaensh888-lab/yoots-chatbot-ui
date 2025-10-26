@@ -1,35 +1,37 @@
 "use client";
 
+import { useContext, useEffect, useState, ReactNode } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+
 import { Dashboard } from "@/components/ui/dashboard";
+import Loading from "../loading";
+
 import { ChatbotUIContext } from "@/context/context";
-import { getAssistantWorkspacesByWorkspaceId } from "@/db/assistants";
+
+import { getWorkspaceById } from "@/db/workspaces";
 import { getChatsByWorkspaceId } from "@/db/chats";
 import { getCollectionWorkspacesByWorkspaceId } from "@/db/collections";
-import { getFileWorkspacesByWorkspaceId } from "@/db/files";
 import { getFoldersByWorkspaceId } from "@/db/folders";
-import { getModelWorkspacesByWorkspaceId } from "@/db/models";
+import { getFileWorkspacesByWorkspaceId } from "@/db/files";
 import { getPresetWorkspacesByWorkspaceId } from "@/db/presets";
 import { getPromptWorkspacesByWorkspaceId } from "@/db/prompts";
-import { getAssistantImageFromStorage } from "@/db/storage/assistant-images";
 import { getToolWorkspacesByWorkspaceId } from "@/db/tools";
-import { getWorkspaceById } from "@/db/workspaces";
+import { getModelWorkspacesByWorkspaceId } from "@/db/models";
+import { getAssistantImageFromStorage } from "@/db/storage/assistant-images";
+
 import { convertBlobToBase64 } from "@/lib/blob-to-b64";
-
-// ВАЖНО: единый импорт Supabase по алиасу "@/supabase/*"
-import { supabase } from "@/supabase/browser-client";
-
 import type { LLMID } from "@/types";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ReactNode, useContext, useEffect, useState } from "react";
-import Loading from "../loading";
+
+// Единый браузерный клиент Supabase
+import { supabase } from "@/supabase/browser-client";
+// Типы БД
+import type { Database } from "@/supabase/types";
 
 interface WorkspaceLayoutProps {
   children: ReactNode;
 }
 
-/** Минимальный тип, который нам нужен из воркспейса,
- * чтобы не получить never при обращении к полям.
- */
+/** Минимальный тип, чтобы безопасно читать поля workspace */
 type WorkspaceLike = {
   id?: string;
   default_model?: LLMID | null;
@@ -41,14 +43,16 @@ type WorkspaceLike = {
   embeddings_provider?: "openai" | "local" | null;
 };
 
+type AssistantRow = Database["public"]["Tables"]["assistants"]["Row"];
+
 export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
   const router = useRouter();
-
   const params = useParams();
   const searchParams = useSearchParams();
   const workspaceId = params.workspaceid as string;
 
   const {
+    // состояние UI/данных
     setChatSettings,
     setAssistants,
     setAssistantImages,
@@ -75,7 +79,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
 
   const [loading, setLoading] = useState(true);
 
-  // Проверка сессии — пускаем только авторизованных в рабочие пространства
+  // Пускаем в workspace только при наличии сессии
   useEffect(() => {
     (async () => {
       const session = (await supabase.auth.getSession()).data.session;
@@ -85,12 +89,10 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
       }
       await fetchWorkspaceData(workspaceId);
     })();
-    // router и workspaceId — стабильны в рамках страницы; зависимостей не добавляю,
-    // чтобы не триггерить повторные вызовы.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Переключение воркспейса — сбрасываем состояние чата и подгружаем данные
+  // Переключение workspace → сброс и подгрузка
   useEffect(() => {
     (async () => {
       await fetchWorkspaceData(workspaceId);
@@ -108,75 +110,70 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     setNewMessageFiles([]);
     setNewMessageImages([]);
     setShowFilesDisplay(false);
-  }, [workspaceId]); // тут зависимость корректная
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
 
   const fetchWorkspaceData = async (wid: string) => {
     setLoading(true);
 
-    // Явно приводим результат к минимальному типу, чтобы TS не вывел never
+    // 1) Workspace
     const workspace = (await getWorkspaceById(wid)) as WorkspaceLike | null;
     setSelectedWorkspace(workspace as any);
 
-    const assistantData = await getAssistantWorkspacesByWorkspaceId(wid);
-    const assistants = (assistantData?.assistants ?? []) as Array<{
-      id: string;
-      image_path?: string | null;
-    }>;
-    setAssistants(assistants);
-// вверху файла уже есть import { Database } from "@/supabase/types"
-// при необходимости добавьте: import { createServerClient } from "@supabase/ssr";
+    // 2) Assistants — берём ПОЛНЫЕ строки таблицы
+    const { data: assistantRows, error: aErr } = await supabase
+      .from("assistants")
+      .select("*")
+      .eq("workspace_id", wid);
 
-type AssistantRow = Database["public"]["Tables"]["assistants"]["Row"];
+    if (aErr) throw new Error(aErr.message);
 
-// ... внутри async-функции (там, где вы получаете workspace и т.п.)
-const { data: assistants, error: aErr } = await supabase
-  .from("assistants")
-  .select("*")               // важно: забираем ВСЕ поля, а не только id,image_path
-  .eq("workspace_id", workspaceId);
+    setAssistants((assistantRows ?? []) as AssistantRow[]);
 
-if (aErr) throw new Error(aErr.message);
+    // 2a) Картинки ассистентов
+    const imageMap: Record<string, string> = {};
+    for (const a of assistantRows ?? []) {
+      if (a.image_path) {
+        const blob = await getAssistantImageFromStorage(a.image_path);
+        if (blob) {
+          imageMap[a.id] = await convertBlobToBase64(blob);
+        }
+      }
+    }
+    setAssistantImages(imageMap);
 
-// setAssistants ждёт полный тип — он и будет:
-setAssistants((assistants ?? []) as AssistantRow[]);
-
-// если ниже есть цикл по ассистентам — используйте тот же массив:
-for (const a of assistants ?? []) {
-  // a.image_path и пр. доступны
-}
-
-
+    // 3) Остальные сущности
     const chats = await getChatsByWorkspaceId(wid);
     setChats(chats);
 
-    const collectionData = await getCollectionWorkspacesByWorkspaceId(wid);
-    setCollections(collectionData.collections);
+    const collections = await getCollectionWorkspacesByWorkspaceId(wid);
+    setCollections(collections.collections);
 
     const folders = await getFoldersByWorkspaceId(wid);
     setFolders(folders);
 
-    const fileData = await getFileWorkspacesByWorkspaceId(wid);
-    setFiles(fileData.files);
+    const files = await getFileWorkspacesByWorkspaceId(wid);
+    setFiles(files.files);
 
-    const presetData = await getPresetWorkspacesByWorkspaceId(wid);
-    setPresets(presetData.presets);
+    const presets = await getPresetWorkspacesByWorkspaceId(wid);
+    setPresets(presets.presets);
 
-    const promptData = await getPromptWorkspacesByWorkspaceId(wid);
-    setPrompts(promptData.prompts);
+    const prompts = await getPromptWorkspacesByWorkspaceId(wid);
+    setPrompts(prompts.prompts);
 
-    const toolData = await getToolWorkspacesByWorkspaceId(wid);
-    setTools(toolData.tools);
+    const tools = await getToolWorkspacesByWorkspaceId(wid);
+    setTools(tools.tools);
 
-    const modelData = await getModelWorkspacesByWorkspaceId(wid);
-    setModels(modelData.models);
+    const models = await getModelWorkspacesByWorkspaceId(wid);
+    setModels(models.models);
 
-    // Настройки чата — безопасно читаем поля воркспейса с дефолтами
+    // 4) Настройки чата с безопасными дефолтами
     setChatSettings({
       model: (searchParams.get("model") ||
         workspace?.default_model ||
         "gpt-4-1106-preview") as LLMID,
       prompt:
-        workspace?.default_prompt ??
-        "You are a friendly, helpful AI assistant.",
+        workspace?.default_prompt ?? "You are a friendly, helpful AI assistant.",
       temperature: workspace?.default_temperature ?? 0.5,
       contextLength: workspace?.default_context_length ?? 4096,
       includeProfileContext: workspace?.include_profile_context ?? true,
