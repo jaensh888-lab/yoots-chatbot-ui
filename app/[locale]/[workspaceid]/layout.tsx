@@ -4,34 +4,32 @@ import { useContext, useEffect, useState, ReactNode } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { Dashboard } from "@/components/ui/dashboard";
-import Loading from "../loading";
-
 import { ChatbotUIContext } from "@/context/context";
 
-import { getWorkspaceById } from "@/db/workspaces";
 import { getChatsByWorkspaceId } from "@/db/chats";
 import { getCollectionWorkspacesByWorkspaceId } from "@/db/collections";
-import { getFoldersByWorkspaceId } from "@/db/folders";
 import { getFileWorkspacesByWorkspaceId } from "@/db/files";
+import { getFoldersByWorkspaceId } from "@/db/folders";
+import { getModelWorkspacesByWorkspaceId } from "@/db/models";
 import { getPresetWorkspacesByWorkspaceId } from "@/db/presets";
 import { getPromptWorkspacesByWorkspaceId } from "@/db/prompts";
 import { getToolWorkspacesByWorkspaceId } from "@/db/tools";
-import { getModelWorkspacesByWorkspaceId } from "@/db/models";
-import { getAssistantImageFromStorage } from "@/db/storage/assistant-images";
+import { getWorkspaceById } from "@/db/workspaces";
 
 import { convertBlobToBase64 } from "@/lib/blob-to-b64";
-import type { LLMID } from "@/types";
 
-// Единый браузерный клиент Supabase
+// единый браузерный клиент Supabase
 import { supabase } from "@/supabase/browser-client";
-// Типы БД
 import type { Database } from "@/supabase/types";
+
+import type { LLMID } from "@/types";
+import Loading from "../loading";
 
 interface WorkspaceLayoutProps {
   children: ReactNode;
 }
 
-/** Минимальный тип, чтобы безопасно читать поля workspace */
+/** Минимальный тип воркспейса, чтобы безопасно читать поля по умолчанию */
 type WorkspaceLike = {
   id?: string;
   default_model?: LLMID | null;
@@ -43,7 +41,10 @@ type WorkspaceLike = {
   embeddings_provider?: "openai" | "local" | null;
 };
 
+// тип строки ассистента из БД
 type AssistantRow = Database["public"]["Tables"]["assistants"]["Row"];
+
+const ASSISTANT_IMAGES_BUCKET = "assistant-images"; // <— поменяй, если у тебя другое имя
 
 export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
   const router = useRouter();
@@ -52,7 +53,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
   const workspaceId = params.workspaceid as string;
 
   const {
-    // состояние UI/данных
+    // состояние, которое мы наполняем
     setChatSettings,
     setAssistants,
     setAssistantImages,
@@ -79,11 +80,11 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
 
   const [loading, setLoading] = useState(true);
 
-  // Пускаем в workspace только при наличии сессии
+  // пускаем сюда только авторизованных
   useEffect(() => {
     (async () => {
-      const session = (await supabase.auth.getSession()).data.session;
-      if (!session) {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
         router.push("/login");
         return;
       }
@@ -92,7 +93,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Переключение workspace → сброс и подгрузка
+  // при переключении воркспейса — сбрасываем чат и тянем новые данные
   useEffect(() => {
     (async () => {
       await fetchWorkspaceData(workspaceId);
@@ -101,10 +102,8 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     setUserInput("");
     setChatMessages([]);
     setSelectedChat(null);
-
     setIsGenerating(false);
     setFirstTokenReceived(false);
-
     setChatFiles([]);
     setChatImages([]);
     setNewMessageFiles([]);
@@ -116,71 +115,76 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
   const fetchWorkspaceData = async (wid: string) => {
     setLoading(true);
 
-    // 1) Workspace
+    // 1) сам воркспейс
     const workspace = (await getWorkspaceById(wid)) as WorkspaceLike | null;
     setSelectedWorkspace(workspace as any);
 
-    // 2) Assistants — берём ПОЛНЫЕ строки таблицы
-    const { data: assistantRows, error: aErr } = await supabase
+    // 2) ассистенты (полные строки, чтобы тип совпадал с состоянием)
+    const { data: assistantsFull, error: assistantsErr } = await supabase
       .from("assistants")
       .select("*")
       .eq("workspace_id", wid);
 
-    if (aErr) throw new Error(aErr.message);
+    if (assistantsErr) {
+      throw new Error(assistantsErr.message);
+    }
 
-    setAssistants((assistantRows ?? []) as AssistantRow[]);
+    const assistants = (assistantsFull ?? []) as AssistantRow[];
+    setAssistants(assistants);
 
-    // 2a) Картинки ассистентов
+    // 3) картинки ассистентов — строго Blob -> base64
     const imageMap: Record<string, string> = {};
-    for (const a of assistantRows ?? []) {
-      if (a.image_path) {
-        const blob = await getAssistantImageFromStorage(a.image_path);
-        if (blob) {
+    for (const a of assistants) {
+      const path = a.image_path;
+      if (path) {
+        const { data: blob, error } = await supabase
+          .storage
+          .from(ASSISTANT_IMAGES_BUCKET)
+          .download(path); // <- это вернёт Blob
+
+        if (!error && blob) {
           imageMap[a.id] = await convertBlobToBase64(blob);
         }
       }
     }
     setAssistantImages(imageMap);
 
-    // 3) Остальные сущности
+    // 4) остальное
     const chats = await getChatsByWorkspaceId(wid);
     setChats(chats);
 
-    const collections = await getCollectionWorkspacesByWorkspaceId(wid);
-    setCollections(collections.collections);
+    const collectionData = await getCollectionWorkspacesByWorkspaceId(wid);
+    setCollections(collectionData.collections);
 
     const folders = await getFoldersByWorkspaceId(wid);
     setFolders(folders);
 
-    const files = await getFileWorkspacesByWorkspaceId(wid);
-    setFiles(files.files);
+    const fileData = await getFileWorkspacesByWorkspaceId(wid);
+    setFiles(fileData.files);
 
-    const presets = await getPresetWorkspacesByWorkspaceId(wid);
-    setPresets(presets.presets);
+    const presetData = await getPresetWorkspacesByWorkspaceId(wid);
+    setPresets(presetData.presets);
 
-    const prompts = await getPromptWorkspacesByWorkspaceId(wid);
-    setPrompts(prompts.prompts);
+    const promptData = await getPromptWorkspacesByWorkspaceId(wid);
+    setPrompts(promptData.prompts);
 
-    const tools = await getToolWorkspacesByWorkspaceId(wid);
-    setTools(tools.tools);
+    const toolData = await getToolWorkspacesByWorkspaceId(wid);
+    setTools(toolData.tools);
 
-    const models = await getModelWorkspacesByWorkspaceId(wid);
-    setModels(models.models);
+    const modelData = await getModelWorkspacesByWorkspaceId(wid);
+    setModels(modelData.models);
 
-    // 4) Настройки чата с безопасными дефолтами
+    // 5) базовые настройки чата по воркспейсу / query
     setChatSettings({
       model: (searchParams.get("model") ||
         workspace?.default_model ||
         "gpt-4-1106-preview") as LLMID,
-      prompt:
-        workspace?.default_prompt ?? "You are a friendly, helpful AI assistant.",
+      prompt: workspace?.default_prompt ?? "You are a friendly, helpful AI assistant.",
       temperature: workspace?.default_temperature ?? 0.5,
       contextLength: workspace?.default_context_length ?? 4096,
       includeProfileContext: workspace?.include_profile_context ?? true,
-      includeWorkspaceInstructions:
-        workspace?.include_workspace_instructions ?? true,
-      embeddingsProvider:
-        (workspace?.embeddings_provider as "openai" | "local") ?? "openai"
+      includeWorkspaceInstructions: workspace?.include_workspace_instructions ?? true,
+      embeddingsProvider: (workspace?.embeddings_provider as "openai" | "local") ?? "openai"
     });
 
     setLoading(false);
