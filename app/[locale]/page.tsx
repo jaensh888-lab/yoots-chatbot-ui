@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
+import Link from "next/link"
 import { IconArrowRight } from "@tabler/icons-react"
 
 import { ChatbotUISVG } from "@/components/icons/chatbotui-svg"
@@ -14,13 +14,12 @@ type WorkspaceIdRow = Pick<Tables<"workspaces">, "id">
 
 export default function LoginPage() {
   const router = useRouter()
-  const search = useSearchParams()
   const { theme } = useTheme()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Если уже есть сессия — отправляем в домашний workspace
+  // Если уже есть сессия — сразу в домашний workspace
   useEffect(() => {
     ;(async () => {
       const { data } = await supabase.auth.getSession()
@@ -40,15 +39,13 @@ export default function LoginPage() {
         .select("id")
         .order("created_at", { ascending: true })
         .limit(1)
-        .returns<WorkspaceIdRow[]>() // подсказали TS форму
-        .maybeSingle()
-
+        .returns<WorkspaceIdRow[]>() // подсказываем тип
+        .maybeSingle()               // объект или null (без броска ошибки)
       if (error) throw error
 
       if (ws?.id) {
         router.push(`/${ws.id}/chat`)
       } else {
-        // TODO: при необходимости поменяй маршрут мастера
         router.push("/workspaces/new")
       }
     } catch (e: any) {
@@ -92,8 +89,6 @@ export default function LoginPage() {
         >
           {loading ? "Загрузка…" : "Продолжить как гость"}
         </button>
-
-        {/* Дополнительные способы входа можно добавить позже */}
 
         <Link
           href="/"
