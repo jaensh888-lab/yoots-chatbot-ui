@@ -1,24 +1,12 @@
-import { Brand } from "@/components/ui/brand"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { SubmitButton } from "@/components/ui/submit-button"
-import { createClient } from "@/lib/supabase/server"
-import { Database } from "@/supabase/types"
-import { createServerClient } from "@supabase/ssr"
-import { get } from "@vercel/edge-config"
-import { Metadata } from "next"
-import { cookies, headers } from "next/headers"
-import { redirect } from "next/navigation"
+// ... ваши импорты без изменений
 
 export const metadata: Metadata = {
-  title: "Login"
+  title: "Login",
 }
 
 export default async function Login({
-  searchParams
-}: {
-  searchParams: { message: string }
-}) {
+  searchParams,
+}: { searchParams: { message: string } }) {
   const cookieStore = cookies()
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,10 +15,11 @@ export default async function Login({
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value
-        }
-      }
-    }
+        },
+      },
+    },
   )
+
   const session = (await supabase.auth.getSession()).data.session
 
   if (session) {
@@ -48,9 +37,25 @@ export default async function Login({
     return redirect(`/${homeWorkspace.id}/chat`)
   }
 
+  // ---------- NEW: анонимный вход ----------
+  const signInAnonymously = async () => {
+    "use server"
+    const cookieStore = cookies()
+    const supabase = createClient(cookieStore)
+
+    const { data, error } = await supabase.auth.signInAnonymously()
+    if (error) {
+      return redirect(`/login?message=${encodeURIComponent(error.message)}`)
+    }
+
+    // Тут можно сразу отправлять в /setup,
+    // чтобы пользователь задал имя/юзернейм как обычно
+    return redirect("/setup")
+  }
+  // ---------- /NEW ----------
+
   const signIn = async (formData: FormData) => {
     "use server"
-
     const email = formData.get("email") as string
     const password = formData.get("password") as string
     const cookieStore = cookies()
@@ -58,7 +63,7 @@ export default async function Login({
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      password
+      password,
     })
 
     if (error) {
@@ -74,7 +79,7 @@ export default async function Login({
 
     if (!homeWorkspace) {
       throw new Error(
-        homeWorkspaceError?.message || "An unexpected error occurred"
+        homeWorkspaceError?.message || "An unexpected error occurred",
       )
     }
 
@@ -86,18 +91,16 @@ export default async function Login({
     if (process.env.EDGE_CONFIG) {
       return await get<string>(name)
     }
-
     return process.env[name]
   }
 
   const signUp = async (formData: FormData) => {
     "use server"
-
     const email = formData.get("email") as string
     const password = formData.get("password") as string
 
     const emailDomainWhitelistPatternsString = await getEnvVarOrEdgeConfigValue(
-      "EMAIL_DOMAIN_WHITELIST"
+      "EMAIL_DOMAIN_WHITELIST",
     )
     const emailDomainWhitelist = emailDomainWhitelistPatternsString?.trim()
       ? emailDomainWhitelistPatternsString?.split(",")
@@ -108,13 +111,12 @@ export default async function Login({
       ? emailWhitelistPatternsString?.split(",")
       : []
 
-    // If there are whitelist patterns, check if the email is allowed to sign up
     if (emailDomainWhitelist.length > 0 || emailWhitelist.length > 0) {
       const domainMatch = emailDomainWhitelist?.includes(email.split("@")[1])
       const emailMatch = emailWhitelist?.includes(email)
       if (!domainMatch && !emailMatch) {
         return redirect(
-          `/login?message=Email ${email} is not allowed to sign up.`
+          `/login?message=Email ${email} is not allowed to sign up.`,
         )
       }
     }
@@ -126,9 +128,8 @@ export default async function Login({
       email,
       password,
       options: {
-        // USE IF YOU WANT TO SEND EMAIL VERIFICATION, ALSO CHANGE TOML FILE
         // emailRedirectTo: `${origin}/auth/callback`
-      }
+      },
     })
 
     if (error) {
@@ -137,21 +138,17 @@ export default async function Login({
     }
 
     return redirect("/setup")
-
-    // USE IF YOU WANT TO SEND EMAIL VERIFICATION, ALSO CHANGE TOML FILE
-    // return redirect("/login?message=Check email to continue sign in process")
   }
 
   const handleResetPassword = async (formData: FormData) => {
     "use server"
-
     const origin = headers().get("origin")
     const email = formData.get("email") as string
     const cookieStore = cookies()
     const supabase = createClient(cookieStore)
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${origin}/auth/callback?next=/login/password`
+      redirectTo: `${origin}/auth/callback?next=/login/password`,
     })
 
     if (error) {
@@ -199,6 +196,15 @@ export default async function Login({
         >
           Sign Up
         </SubmitButton>
+
+        {/* ---------- NEW: кнопка анонимного входа ---------- */}
+        <SubmitButton
+          formAction={signInAnonymously}
+          className="border-foreground/20 rounded-md border px-4 py-2"
+        >
+          Продолжить без аккаунта
+        </SubmitButton>
+        {/* ---------- /NEW ---------- */}
 
         <div className="text-muted-foreground mt-1 flex justify-center text-sm">
           <span className="mr-1">Forgot your password?</span>
