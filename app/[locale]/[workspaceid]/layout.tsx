@@ -18,34 +18,12 @@ import { getModelWorkspacesByWorkspaceId } from "@/db/models"
 import { getPresetWorkspacesByWorkspaceId } from "@/db/presets"
 import { getPromptWorkspacesByWorkspaceId } from "@/db/prompts"
 import { getToolWorkspacesByWorkspaceId } from "@/db/tools"
-// импорт типов рядом с остальными импортами
-import type { WorkspaceCollections } from "@/db/collections"
-
-// ...
-
-// было:
-const collectionData = await getCollectionWorkspacesByWorkspaceId(wid)
-setCollections(collectionData.collections)
-
-// стало (любой из вариантов ниже):
-// Вариант А: аннотация переменной
-const collectionData: WorkspaceCollections = await getCollectionWorkspacesByWorkspaceId(wid)
-setCollections(collectionData.collections as any)
-
-// Вариант Б: деструктурирование с дефолтом (мой любимый)
-const { collections = [] } =
-  (await getCollectionWorkspacesByWorkspaceId(wid)) ?? { collections: [] }
-setCollections(collections as any) // убери `as any`, если у setCollections уже строгий тип
 
 import { convertBlobToBase64 } from "@/lib/blob-to-b64"
 import type { LLMID } from "@/types"
-// Браузерный клиент Supabase
 import { supabase } from "@/supabase/browser-client"
 
-interface WorkspaceLayoutProps {
-  children: ReactNode
-}
-
+/** Локальные типы для строгой типизации */
 type WorkspaceLike = {
   id?: string
   default_model?: LLMID | null
@@ -57,7 +35,6 @@ type WorkspaceLike = {
   embeddings_provider?: "openai" | "local" | null
 }
 
-// -------- Типы ассистентов (ключевое для фикса 'never') --------
 type AssistantLink = {
   id: string
   image_path?: string | null
@@ -66,10 +43,13 @@ type AssistantLink = {
 type AssistantWorkspaceLinks = {
   assistants: AssistantLink[]
 }
-// ----------------------------------------------------------------
 
-// Имя бакета со снимками ассистентов
+/** Имя бакета для изображений ассистентов в Supabase Storage */
 const ASSISTANT_IMAGES_BUCKET = "assistant-images"
+
+interface WorkspaceLayoutProps {
+  children: ReactNode
+}
 
 export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
   const router = useRouter()
@@ -143,29 +123,27 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     const workspace = (await getWorkspaceById(wid)) as WorkspaceLike | null
     setSelectedWorkspace(workspace as any)
 
-    // 2) Ассистенты (из связок) — минимально id + image_path
+    // 2) Ассистенты (id + image_path)
     const links: AssistantWorkspaceLinks | null =
       await getAssistantWorkspacesByWorkspaceId(wid)
 
     const assistants: AssistantLink[] = links?.assistants ?? []
     setAssistants(assistants as any)
 
-    // 3) Аватарки ассистентов → массив нужной формы (узнаём тип из сеттера)
+    // 3) Иконки ассистентов из Storage → base64
     type AssistantImagesParam = Parameters<typeof setAssistantImages>[0]
     const images = [] as unknown as AssistantImagesParam
 
     for (const a of assistants) {
       if (!a.image_path) continue
 
-      // строго качаем Blob из Storage — официальный путь, .download() -> Blob
-      // https://supabase.com/docs/reference/javascript/storage-from-download
       const { data: blob, error } = await supabase.storage
         .from(ASSISTANT_IMAGES_BUCKET)
         .download(a.image_path)
 
       if (!error && blob) {
-        const dataUrl = await convertBlobToBase64(blob) // FileReader.readAsDataURL
-        // @ts-expect-error: приводим к ожидаемой форме из контекста (обычно { assistantId, base64 })
+        const dataUrl = await convertBlobToBase64(blob)
+        // @ts-expect-error приведение к ожидаемой форме из контекста
         images.push({ assistantId: a.id, base64: dataUrl as string })
       }
     }
@@ -175,26 +153,46 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     const chats = await getChatsByWorkspaceId(wid)
     setChats(chats)
 
-    const collectionData = await getCollectionWorkspacesByWorkspaceId(wid)
-    setCollections(collectionData.collections)
+    // collections (функция возвращает объект)
+    {
+      const { collections = [] } =
+        (await getCollectionWorkspacesByWorkspaceId(wid)) ?? { collections: [] }
+      setCollections(collections as any)
+    }
 
     const folders = await getFoldersByWorkspaceId(wid)
     setFolders(folders)
 
-    const fileData = await getFileWorkspacesByWorkspaceId(wid)
-    setFiles(fileData.files)
+    // files / presets / prompts / tools / models (все — объекты с массивами)
+    {
+      const { files = [] } =
+        (await getFileWorkspacesByWorkspaceId(wid)) ?? { files: [] }
+      setFiles(files as any)
+    }
 
-    const presetData = await getPresetWorkspacesByWorkspaceId(wid)
-    setPresets(presetData.presets)
+    {
+      const { presets = [] } =
+        (await getPresetWorkspacesByWorkspaceId(wid)) ?? { presets: [] }
+      setPresets(presets as any)
+    }
 
-    const promptData = await getPromptWorkspacesByWorkspaceId(wid)
-    setPrompts(promptData.prompts)
+    {
+      const { prompts = [] } =
+        (await getPromptWorkspacesByWorkspaceId(wid)) ?? { prompts: [] }
+      setPrompts(prompts as any)
+    }
 
-    const toolData = await getToolWorkspacesByWorkspaceId(wid)
-    setTools(toolData.tools)
+    {
+      const { tools = [] } =
+        (await getToolWorkspacesByWorkspaceId(wid)) ?? { tools: [] }
+      setTools(tools as any)
+    }
 
-    const modelData = await getModelWorkspacesByWorkspaceId(wid)
-    setModels(modelData.models)
+    {
+      const { models = [] } =
+        (await getModelWorkspacesByWorkspaceId(wid)) ?? { models: [] }
+      setModels(models as any)
+    }
 
     // 5) Настройки чата
     setChatSettings({
@@ -202,8 +200,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
         workspace?.default_model ||
         "gpt-4-1106-preview") as LLMID,
       prompt:
-        workspace?.default_prompt ??
-        "You are a friendly, helpful AI assistant.",
+        workspace?.default_prompt ?? "You are a friendly, helpful AI assistant.",
       temperature: workspace?.default_temperature ?? 0.5,
       contextLength: workspace?.default_context_length ?? 4096,
       includeProfileContext: workspace?.include_profile_context ?? true,
