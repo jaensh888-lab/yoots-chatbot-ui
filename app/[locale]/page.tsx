@@ -1,28 +1,108 @@
 "use client"
 
-import { ChatbotUISVG } from "@/components/icons/chatbotui-svg"
-import { IconArrowRight } from "@tabler/icons-react"
-import { useTheme } from "next-themes"
+import { useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { useTheme } from "next-themes"
+import { IconArrowRight } from "@tabler/icons-react"
 
-export default function HomePage() {
+import { ChatbotUISVG } from "@/components/icons/chatbotui-svg"
+import { supabase } from "@/supabase/browser-client"
+import type { Tables } from "@/supabase/types"
+
+type WorkspaceIdRow = Pick<Tables<"workspaces">, "id">
+
+export default function LoginPage() {
+  const router = useRouter()
+  const search = useSearchParams()
   const { theme } = useTheme()
 
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Если уже есть сессия — отправляем в домашний workspace
+  useEffect(() => {
+    ;(async () => {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        await goHome()
+      } else {
+        setLoading(false)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function goHome() {
+    try {
+      const { data: ws, error } = await supabase
+        .from("workspaces")
+        .select("id")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .returns<WorkspaceIdRow[]>() // подсказали TS форму
+        .maybeSingle()
+
+      if (error) throw error
+
+      if (ws?.id) {
+        router.push(`/${ws.id}/chat`)
+      } else {
+        // TODO: при необходимости поменяй маршрут мастера
+        router.push("/workspaces/new")
+      }
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to resolve workspace")
+      setLoading(false)
+    }
+  }
+
+  async function loginAnonymous() {
+    try {
+      setError(null)
+      setLoading(true)
+      const { error } = await supabase.auth.signInAnonymously()
+      if (error) throw error
+      await goHome()
+    } catch (e: any) {
+      setError(e?.message ?? "Anonymous sign-in failed")
+      setLoading(false)
+    }
+  }
+
   return (
-    <div className="flex size-full flex-col items-center justify-center">
-      <div>
+    <div className="flex min-h-[70vh] flex-col items-center justify-center p-6">
+      <div className="mb-4">
         <ChatbotUISVG theme={theme === "dark" ? "dark" : "light"} scale={0.3} />
       </div>
 
-      <div className="mt-2 text-4xl font-bold">Chatbot UI</div>
+      <h1 className="text-3xl font-bold">Войти в чат</h1>
 
-      <Link
-        className="mt-4 flex w-[200px] items-center justify-center rounded-md bg-blue-500 p-2 font-semibold"
-        href="/login"
-      >
-        Start Chatting
-        <IconArrowRight className="ml-1" size={20} />
-      </Link>
+      {error && (
+        <div className="mt-3 rounded-md border border-red-500 px-3 py-2 text-sm text-red-600">
+          {error}
+        </div>
+      )}
+
+      <div className="mt-6 flex w-[260px] flex-col gap-3">
+        <button
+          onClick={loginAnonymous}
+          disabled={loading}
+          className="rounded-md bg-blue-500 p-2 font-semibold text-white disabled:opacity-60"
+        >
+          {loading ? "Загрузка…" : "Продолжить как гость"}
+        </button>
+
+        {/* Дополнительные способы входа можно добавить позже */}
+
+        <Link
+          href="/"
+          className="mt-1 flex items-center justify-center gap-1 rounded-md border p-2 text-sm"
+        >
+          На главную
+          <IconArrowRight size={18} />
+        </Link>
+      </div>
     </div>
   )
 }
