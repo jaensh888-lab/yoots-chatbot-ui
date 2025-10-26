@@ -39,7 +39,16 @@ type WorkspaceLike = {
   embeddings_provider?: "openai" | "local" | null
 }
 
-type AssistantLink = { id: string; image_path?: string | null }
+// -------- Типы ассистентов (ключевое для фикса 'never') --------
+type AssistantLink = {
+  id: string
+  image_path?: string | null
+}
+
+type AssistantWorkspaceLinks = {
+  assistants: AssistantLink[]
+}
+// ----------------------------------------------------------------
 
 // Имя бакета со снимками ассистентов
 const ASSISTANT_IMAGES_BUCKET = "assistant-images"
@@ -75,7 +84,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     setShowFilesDisplay
   } = useContext(ChatbotUIContext)
 
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState<boolean>(true)
 
   // Пускаем в workspace только авторизованных
   useEffect(() => {
@@ -117,8 +126,10 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
     setSelectedWorkspace(workspace as any)
 
     // 2) Ассистенты (из связок) — минимально id + image_path
-    const links = await getAssistantWorkspacesByWorkspaceId(wid)
-    const assistants = (links?.assistants ?? []) as AssistantLink[]
+    const links: AssistantWorkspaceLinks | null =
+      await getAssistantWorkspacesByWorkspaceId(wid)
+
+    const assistants: AssistantLink[] = links?.assistants ?? []
     setAssistants(assistants as any)
 
     // 3) Аватарки ассистентов → массив нужной формы (узнаём тип из сеттера)
@@ -135,7 +146,7 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
         .download(a.image_path)
 
       if (!error && blob) {
-        const dataUrl = await convertBlobToBase64(blob) // FileReader.readAsDataURL, MDN
+        const dataUrl = await convertBlobToBase64(blob) // FileReader.readAsDataURL
         // @ts-expect-error: приводим к ожидаемой форме из контекста (обычно { assistantId, base64 })
         images.push({ assistantId: a.id, base64: dataUrl as string })
       }
