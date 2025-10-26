@@ -123,41 +123,27 @@ export default function WorkspaceLayout({ children }: WorkspaceLayoutProps) {
       image_path?: string | null;
     }>;
     setAssistants(assistants);
+// вверху файла уже есть import { Database } from "@/supabase/types"
+// при необходимости добавьте: import { createServerClient } from "@supabase/ssr";
 
-    // подгружаем картинки ассистентов
-    for (const assistant of assistants) {
-      let url = "";
+type AssistantRow = Database["public"]["Tables"]["assistants"]["Row"];
 
-      if (assistant.image_path) {
-        url = (await getAssistantImageFromStorage(assistant.image_path)) || "";
-      }
+// ... внутри async-функции (там, где вы получаете workspace и т.п.)
+const { data: assistants, error: aErr } = await supabase
+  .from("assistants")
+  .select("*")               // важно: забираем ВСЕ поля, а не только id,image_path
+  .eq("workspace_id", workspaceId);
 
-      if (url) {
-        const response = await fetch(url);
-        const blob = await response.blob();
-        const base64 = await convertBlobToBase64(blob);
+if (aErr) throw new Error(aErr.message);
 
-        setAssistantImages(prev => [
-          ...prev,
-          {
-            assistantId: assistant.id,
-            path: assistant.image_path,
-            base64,
-            url
-          }
-        ]);
-      } else {
-        setAssistantImages(prev => [
-          ...prev,
-          {
-            assistantId: assistant.id,
-            path: assistant.image_path,
-            base64: "",
-            url
-          }
-        ]);
-      }
-    }
+// setAssistants ждёт полный тип — он и будет:
+setAssistants((assistants ?? []) as AssistantRow[]);
+
+// если ниже есть цикл по ассистентам — используйте тот же массив:
+for (const a of assistants ?? []) {
+  // a.image_path и пр. доступны
+}
+
 
     const chats = await getChatsByWorkspaceId(wid);
     setChats(chats);
