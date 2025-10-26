@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Если уже есть сессия — сразу в первый workspace
+  // Если уже есть сессия — отправляем в первый workspace
   useEffect(() => {
     ;(async () => {
       const { data } = await supabase.auth.getSession()
@@ -40,11 +40,11 @@ export default function LoginPage() {
         .order("created_at", { ascending: true })
         .limit(1)
         .returns<WorkspaceIdRow[]>() // подсказываем TS форму данных
-        .maybeSingle()               // один объект или null (без throw)
+        .maybeSingle()               // объект или null
       if (error) throw error
 
       if (ws?.id) {
-        router.push(`/${ws.id}/chat`) // клиентская навигация — корректно для client-компонента
+        router.push(`/${ws.id}/chat`) // клиентская навигация для Client Component
       } else {
         router.push("/workspaces/new")
       }
@@ -58,7 +58,6 @@ export default function LoginPage() {
     try {
       setError(null)
       setLoading(true)
-      // официальное API анонимного входа
       const { error } = await supabase.auth.signInAnonymously()
       if (error) throw error
       await goHome()
