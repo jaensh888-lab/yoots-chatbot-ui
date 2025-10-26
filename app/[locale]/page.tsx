@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Если уже есть сессия — сразу в домашний workspace
+  // Если уже есть сессия — сразу отправляем в первый воркспейс
   useEffect(() => {
     ;(async () => {
       const { data } = await supabase.auth.getSession()
@@ -39,12 +39,12 @@ export default function LoginPage() {
         .select("id")
         .order("created_at", { ascending: true })
         .limit(1)
-        .returns<WorkspaceIdRow[]>() // подсказываем тип
-        .maybeSingle()               // объект или null (без броска ошибки)
+        .returns<WorkspaceIdRow[]>() // ← подсказываем TS форму данных
+        .maybeSingle()               // ← объект или null
       if (error) throw error
 
       if (ws?.id) {
-        router.push(`/${ws.id}/chat`)
+        router.push(`/${ws.id}/chat`) // клиентская навигация — канонично для client components
       } else {
         router.push("/workspaces/new")
       }
